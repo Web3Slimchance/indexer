@@ -35,6 +35,7 @@ import {
   OrderDirection,
   QueryFeeModels,
   TransactionManager,
+  BlockOracleSubgraph,
 } from '@graphprotocol/indexer-common'
 import { CombinedError } from '@urql/core'
 import { GraphQLError } from 'graphql'
@@ -125,7 +126,9 @@ const ACTIONS_QUERY = gql`
 async function actionInputToExpected(
   input: ActionInput,
   id: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ [key: string]: any }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const expected: Record<string, any> = { ...input }
   expected.id = id
 
@@ -222,6 +225,7 @@ let contracts: NetworkContracts
 let logger: Logger
 let indexingStatusResolver: IndexingStatusResolver
 let networkSubgraph: NetworkSubgraph
+let blockOracleSubgraph: BlockOracleSubgraph
 let client: IndexerManagementClient
 let transactionManager: TransactionManager
 let wallet: Wallet
@@ -259,6 +263,10 @@ const setup = async () => {
       'https://api.thegraph.com/subgraphs/name/graphprotocol/graph-network-testnet',
     deployment: undefined,
   })
+  blockOracleSubgraph = await BlockOracleSubgraph.create({
+    logger,
+    endpoint: 'https://api.thegraph.com/subgraphs/name/juanmardefago/block-oracle',
+  })
   transactionManager = new TransactionManager(
     ethereum,
     wallet,
@@ -289,6 +297,7 @@ const setup = async () => {
     indexNodeIDs,
     deploymentManagementEndpoint,
     networkSubgraph,
+    blockOracleSubgraph,
     receiptCollector,
     transactionManager,
     logger,
@@ -506,7 +515,9 @@ describe('Actions', () => {
       .query(ACTIONS_QUERY, { filter: { type: ActionType.ALLOCATE } })
       .toPromise()
     const subgraph1ActionID = actions.data.actions
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((action: any) => action.deploymentID === subgraphDeployment2)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((action: any) => action.id)
 
     const expectedApprovedAction = expecteds.find(
@@ -630,7 +641,9 @@ describe('Actions', () => {
       .query(ACTIONS_QUERY, { filter: { type: ActionType.ALLOCATE } })
       .toPromise()
     const subgraph1ActionID = actions.data.actions
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((action: any) => action.deploymentID === queuedAllocateAction.deploymentID)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((action: any) => action.id)
 
     const expectedApprovedAction = { ...expected }

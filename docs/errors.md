@@ -854,4 +854,16 @@ Failed to resolve POI: User provided POI does not match reference fetched from t
 
 Check sync and health status of the subgraph to access the issue. If needed, provide a POI or use `--force` to bypass POI checks. 
 
+## IE069
+
+**Summary**
+
+Failed to query Block Oracle
+
+**Solution**
+
+Check `block-oracle-endpoint` query endpoint for its syncing status and the EBO contract state. 
+
+
+
 

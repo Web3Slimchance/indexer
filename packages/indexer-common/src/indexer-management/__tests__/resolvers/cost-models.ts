@@ -18,7 +18,11 @@ import {
 import { defineIndexerManagementModels, IndexerManagementModels } from '../../models'
 import { CombinedError } from '@urql/core'
 import { GraphQLError } from 'graphql'
-import { IndexingStatusResolver, NetworkSubgraph } from '@graphprotocol/indexer-common'
+import {
+  IndexingStatusResolver,
+  NetworkSubgraph,
+  BlockOracleSubgraph,
+} from '@graphprotocol/indexer-common'
 
 // Make global Jest variable available
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,6 +78,7 @@ let indexNodeIDs: string[]
 let statusEndpoint: string
 let indexingStatusResolver: IndexingStatusResolver
 let networkSubgraph: NetworkSubgraph
+let blockOracleSubgraph: BlockOracleSubgraph
 let client: IndexerManagementClient
 
 const defaults: IndexerManagementDefaults = {
@@ -108,6 +113,11 @@ const setupAll = async () => {
     deployment: undefined,
   })
 
+  blockOracleSubgraph = await BlockOracleSubgraph.create({
+    logger,
+    endpoint: 'https://api.thegraph.com/subgraphs/name/juanmardefago/block-oracle',
+  })
+
   client = await createIndexerManagementClient({
     models,
     address,
@@ -116,6 +126,7 @@ const setupAll = async () => {
     indexNodeIDs,
     deploymentManagementEndpoint: statusEndpoint,
     networkSubgraph,
+    blockOracleSubgraph,
     logger,
     defaults,
     features: {
@@ -639,6 +650,7 @@ describe('Feature: Inject $DAI variable', () => {
       indexNodeIDs,
       deploymentManagementEndpoint: statusEndpoint,
       networkSubgraph,
+      blockOracleSubgraph,
       logger,
       defaults,
       features: {

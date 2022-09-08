@@ -16,6 +16,7 @@ import {
   IndexingStatusResolver,
   NetworkSubgraph,
   POIDisputeAttributes,
+  BlockOracleSubgraph,
 } from '@graphprotocol/indexer-common'
 import { BigNumber, Wallet } from 'ethers'
 import { Sequelize } from 'sequelize'
@@ -137,6 +138,11 @@ const setup = async () => {
       'https://api.thegraph.com/subgraphs/name/graphprotocol/graph-network-testnet',
     deployment: undefined,
   })
+  const blockOracleSubgraph = await BlockOracleSubgraph.create({
+    logger,
+    endpoint:
+      'https://api.thegraph.com/subgraphs/name/juanmardefago/block-oracle',
+  })
 
   const indexNodeIDs = ['node_1']
   indexerManagementClient = await createIndexerManagementClient({
@@ -147,6 +153,7 @@ const setup = async () => {
     indexNodeIDs,
     deploymentManagementEndpoint: statusEndpoint,
     networkSubgraph,
+    blockOracleSubgraph,
     logger,
     defaults: {
       globalIndexingRule: {

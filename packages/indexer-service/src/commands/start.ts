@@ -21,6 +21,7 @@ import {
   IndexingStatusResolver,
   NetworkSubgraph,
   registerIndexerErrorMetrics,
+  BlockOracleSubgraph,
 } from '@graphprotocol/indexer-common'
 
 import { createServer } from '../server'
@@ -140,6 +141,12 @@ export default {
         type: 'string',
         required: false,
         group: 'Network Subgraph',
+      })
+      .option('block-oracle-endpoint', {
+        description: 'Endpoint to query the epoch block oracle subgraph from',
+        type: 'string',
+        required: true,
+        group: 'Protocol',
       })
       .option('serve-network-subgraph', {
         description: 'Whether to serve the network subgraph at /network',
@@ -293,6 +300,11 @@ export default {
         : undefined,
     })
     logger.info(`Successfully connected to network`)
+
+    const blockOracleSubgraph = await BlockOracleSubgraph.create({
+      logger,
+      endpoint: argv.blockOracleEndpoint,
+    })
 
     logger.info('Connecting to Ethereum', {
       provider: argv.ethereum,
@@ -454,6 +466,7 @@ export default {
       indexNodeIDs: ['node_1'], // This is just a dummy since the indexer-service doesn't manage deployments,
       deploymentManagementEndpoint: argv.graphNodeStatusEndpoint,
       networkSubgraph,
+      blockOracleSubgraph,
       logger,
       defaults: {
         // This is just a dummy, since we're never writing to the management

@@ -12,6 +12,7 @@ import {
   WritableEventual,
 } from '@graphprotocol/common-ts'
 import { NetworkSubgraph } from '../network-subgraph'
+import { BlockOracleSubgraph } from '../block-oracle-subgraph'
 
 import { IndexerManagementModels, IndexingRuleCreationAttributes } from './models'
 
@@ -430,6 +431,7 @@ export interface IndexerManagementClientOptions {
   indexNodeIDs: string[]
   deploymentManagementEndpoint: string
   networkSubgraph: NetworkSubgraph
+  blockOracleSubgraph: BlockOracleSubgraph
   logger: Logger
   defaults: IndexerManagementDefaults
   features: IndexerManagementFeatures
@@ -495,6 +497,7 @@ export const createIndexerManagementClient = async (
     indexNodeIDs,
     deploymentManagementEndpoint,
     networkSubgraph,
+    blockOracleSubgraph,
     logger,
     defaults,
     features,
@@ -527,6 +530,7 @@ export const createIndexerManagementClient = async (
       logger,
       indexingStatusResolver,
       networkSubgraph,
+      blockOracleSubgraph,
       transactionManager.ethereum,
     )
 

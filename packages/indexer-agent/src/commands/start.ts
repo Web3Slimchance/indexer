@@ -26,6 +26,9 @@ import {
   Network,
   NetworkSubgraph,
   registerIndexerErrorMetrics,
+  AllocationManagementMode,
+  NetworkMonitor,
+  BlockOracleSubgraph,
 } from '@graphprotocol/indexer-common'
 import { startAgent } from '../agent'
 import { Indexer } from '../indexer'
@@ -33,10 +36,6 @@ import { providers, Wallet } from 'ethers'
 import { startCostModelAutomation } from '../cost'
 import { createSyncingServer } from '../syncing-server'
 import { monitorEthBalance } from '../utils'
-import {
-  AllocationManagementMode,
-  NetworkMonitor,
-} from '@graphprotocol/indexer-common'
 
 export default {
   command: 'start',
@@ -164,6 +163,12 @@ export default {
         type: 'boolean',
         default: false,
         group: 'Network Subgraph',
+      })
+      .option('block-oracle-endpoint', {
+        description: 'Endpoint to query the epoch block oracle subgraph from',
+        type: 'string',
+        required: true,
+        group: 'Protocol',
       })
       .option('index-node-ids', {
         description:
@@ -717,6 +722,11 @@ export default {
         : undefined,
     })
 
+    const blockOracleSubgraph = await BlockOracleSubgraph.create({
+      logger,
+      endpoint: argv.blockOracleEndpoint,
+    })
+
     logger.info('Connect to network')
     const maxGasFee = argv.baseFeeGasMax || argv.gasPriceMax
     const network = await Network.create(
@@ -761,6 +771,7 @@ export default {
       logger,
       indexingStatusResolver,
       networkSubgraph,
+      blockOracleSubgraph,
       ethereumProvider,
     )
 
@@ -777,6 +788,7 @@ export default {
       indexNodeIDs: argv.indexNodeIds,
       deploymentManagementEndpoint: argv.graphNodeAdminEndpoint,
       networkSubgraph,
+      blockOracleSubgraph,
       logger,
       defaults: {
         globalIndexingRule: {

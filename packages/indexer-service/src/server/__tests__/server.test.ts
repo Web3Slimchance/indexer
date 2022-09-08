@@ -30,6 +30,7 @@ import {
   IndexerManagementModels,
   IndexingStatusResolver,
   NetworkSubgraph,
+  BlockOracleSubgraph,
   QueryFeeModels,
 } from '@graphprotocol/indexer-common'
 
@@ -48,6 +49,7 @@ let address: string
 let contracts: NetworkContracts
 let indexingStatusResolver: IndexingStatusResolver
 let networkSubgraph: NetworkSubgraph
+let blockOracleSubgraph: BlockOracleSubgraph
 let client: IndexerManagementClient
 let receiptManager: AllocationReceiptManager
 
@@ -73,6 +75,10 @@ const setup = async () => {
       'https://api.thegraph.com/subgraphs/name/graphprotocol/graph-network-testnet',
     deployment: undefined,
   })
+  blockOracleSubgraph = await BlockOracleSubgraph.create({
+    logger,
+    endpoint: 'https://thegraph.com/hosted-service/subgraph/juanmardefago/block-oracle',
+  })
   const indexNodeIDs = ['node_1']
   client = await createIndexerManagementClient({
     models,
@@ -82,6 +88,7 @@ const setup = async () => {
     indexNodeIDs,
     deploymentManagementEndpoint: statusEndpoint,
     networkSubgraph,
+    blockOracleSubgraph,
     logger,
     defaults: {
       // This is just a dummy, since we're never writing to the management

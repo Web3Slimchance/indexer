@@ -175,3 +175,21 @@ export const parseGraphQLEpochs = (epoch: any): Epoch => ({
   totalIndexerRewards: epoch.totalIndexerRewards,
   totalDelegatorRewards: epoch.totalDelegatorRewards,
 })
+
+export interface NetworkEpochBlock {
+  network: string
+  blockNumber: number
+}
+
+export const NetworkAliases: { [key: string]: string } = {
+  mainnet: 'eip155:1',
+  rinkeby: 'eip155:4',
+  goerli: 'eip155:5',
+  gnosis: 'eip155:100',
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export const parseGraphQLNetworkEpochBlocks = (block: any): NetworkEpochBlock => ({
+  network: block.network.id,
+  blockNumber: +block.blockNumber,
+})

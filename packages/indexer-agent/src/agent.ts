@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 import {
+  Eventual,
   join,
   Logger,
   Metrics,
@@ -30,6 +31,7 @@ import {
   COST_MODEL_GLOBAL,
   evaluateDeployments,
   AllocationDecision,
+  NetworkEpochBlock,
 } from '@graphprotocol/indexer-common'
 import { Indexer } from './indexer'
 import { AgentConfig } from './types'
@@ -195,6 +197,37 @@ class Agent {
           this.logger.warn(`Failed to fetch start block of current epoch`, {
             error,
           }),
+      },
+    )
+
+    // TODO: once EBO consistent and stable, this can later replace contract call to currentEpoch
+    const globalLatestValidEpoch: Eventual<number> = timer(600_000).tryMap(
+      async () => await this.networkMonitor.latestValidEpoch(),
+      {
+        onError: error =>
+          this.logger.warn(
+            `Failed to obtain global latest valid epoch, trying again later`,
+            {
+              error,
+            },
+          ),
+      },
+    )
+
+    const networkLatestEpochBlocks: Eventual<NetworkEpochBlock[]> = timer(
+      600_000,
+    ).tryMap(
+      async () => {
+        return await this.networkMonitor.networkLatestEpochBlocks()
+      },
+      {
+        onError: error =>
+          this.logger.warn(
+            `Failed to obtain supported networks' latest epoch blocks, trying again later`,
+            {
+              error,
+            },
+          ),
       },
     )
 
@@ -426,6 +459,8 @@ class Agent {
       claimableAllocations,
       disputableAllocations,
       costModels,
+      globalLatestValidEpoch,
+      networkLatestEpochBlocks,
     }).pipe(
       async ({
         paused,
@@ -441,8 +476,39 @@ class Agent {
         claimableAllocations,
         disputableAllocations,
         costModels,
+        globalLatestValidEpoch,
+        networkLatestEpochBlocks,
       }) => {
         this.logger.info(`Reconcile with the network`)
+
+        //TODO: remove later, this is for testing with some logs
+        const networkID = `eip155:${this.network.ethereum._network.chainId}`
+        const testnetLatest = networkLatestEpochBlocks.find(
+          networkBlock => networkBlock.network === networkID,
+        )
+        const getBlock = testnetLatest
+          ? await this.network.ethereum.getBlock(testnetLatest.blockNumber)
+          : 'EBO not syncing goerli testnet'
+
+        // reconcile aliasing networks for network epoch block number
+        const allocNetworkEpochBlockNumbers = activeAllocations.map(
+          allocation =>
+            networkLatestEpochBlocks.find(
+              async b =>
+                b.network ===
+                (await this.networkMonitor.deploymentNetwork(
+                  allocation.subgraphDeployment.id,
+                )),
+            )?.blockNumber ?? currentEpoch.toNumber(),
+        )
+        this.logger.debug(`agent logger checks allocas`, {
+          networkID,
+          epochManager: currentEpoch.toNumber(),
+          globalLatestValidEpoch,
+          networkLatestEpochBlocks,
+          allocNetworkEpochBlockNumbers,
+          getBlock,
+        })
 
         // Do nothing else if the network is paused
         if (paused) {

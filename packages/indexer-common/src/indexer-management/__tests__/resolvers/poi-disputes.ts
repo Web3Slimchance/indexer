@@ -20,7 +20,11 @@ import {
   IndexerManagementModels,
   POIDisputeAttributes,
 } from '../../models'
-import { IndexingStatusResolver, NetworkSubgraph } from '@graphprotocol/indexer-common'
+import {
+  IndexingStatusResolver,
+  NetworkSubgraph,
+  BlockOracleSubgraph,
+} from '@graphprotocol/indexer-common'
 
 // Make global Jest variable available
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,6 +183,7 @@ let contracts: NetworkContracts
 let logger: Logger
 let indexingStatusResolver: IndexingStatusResolver
 let networkSubgraph: NetworkSubgraph
+let blockOracleSubgraph: BlockOracleSubgraph
 let client: IndexerManagementClient
 
 const defaults = {
@@ -210,6 +215,11 @@ const setupAll = async () => {
       'https://api.thegraph.com/subgraphs/name/graphprotocol/graph-network-testnet',
     deployment: undefined,
   })
+  blockOracleSubgraph = await BlockOracleSubgraph.create({
+    logger,
+    endpoint: 'https://api.thegraph.com/subgraphs/name/juanmardefago/block-oracle',
+  })
+
   const indexNodeIDs = ['node_1']
   client = await createIndexerManagementClient({
     models,
@@ -218,6 +228,7 @@ const setupAll = async () => {
     indexingStatusResolver,
     indexNodeIDs,
     networkSubgraph,
+    blockOracleSubgraph,
     deploymentManagementEndpoint: statusEndpoint,
     logger,
     defaults,

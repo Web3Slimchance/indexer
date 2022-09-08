@@ -13,6 +13,10 @@ import {
   Subgraph,
   SubgraphDeployment,
   SubgraphVersion,
+  NetworkAliases,
+  NetworkEpochBlock,
+  parseGraphQLNetworkEpochBlocks,
+  BlockOracleSubgraph,
 } from '@graphprotocol/indexer-common'
 import {
   Address,
@@ -35,6 +39,7 @@ export class NetworkMonitor {
     private logger: Logger,
     private indexingStatusResolver: IndexingStatusResolver,
     private networkSubgraph: NetworkSubgraph,
+    private blockOracleSubgraph: BlockOracleSubgraph,
     private ethereum: providers.BaseProvider,
   ) {}
 
@@ -549,11 +554,126 @@ export class NetworkMonitor {
     return deployments
   }
 
+  // EBO's replacement for contract call to current epoch
+  async latestValidEpoch(): Promise<number> {
+    try {
+      const result = await this.blockOracleSubgraph.query(
+        gql`
+          {
+            globalStates {
+              latestValidEpoch {
+                epochNumber
+              }
+            }
+          }
+        `,
+      )
+
+      if (result.error) {
+        throw result.error
+      }
+
+      if (!result.data.globalStates) {
+        throw indexerError(
+          IndexerErrorCode.IE069,
+          `Failed to query latest valid epoch number for the global state`,
+        )
+      }
+
+      return result.data.globalStates[0].latestValidEpoch.epochNumber
+    } catch (err) {
+      this.logger.error(
+        `Failed to query latest global epoch number from epoch block oracle`,
+        {
+          err,
+        },
+      )
+      throw err
+    }
+  }
+
+  async latestValidEpochBlocks(networks: string[]): Promise<NetworkEpochBlock[]> {
+    try {
+      const result = await this.blockOracleSubgraph.query(
+        gql`
+          query globalStates($networks: [String!]) {
+            globalStates {
+              latestValidEpoch {
+                epochNumber
+                blockNumbers(where: { network_in: $networks }) {
+                  network {
+                    id
+                  }
+                  blockNumber
+                }
+              }
+            }
+          }
+        `,
+        { networks },
+      )
+
+      if (result.error) {
+        throw result.error
+      }
+
+      if (!result.data.globalStates) {
+        throw indexerError(
+          IndexerErrorCode.IE069,
+          `Failed to query latest valid epoch blocks for ${networks}`,
+        )
+      }
+
+      const blockNumbers = result.data.globalStates[0].latestValidEpoch.blockNumbers
+      // TODO: additional handling for missing blockNumbers of a network
+      // Okay rn since hardcoding supported networks
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return blockNumbers.map((blockNumber: any) =>
+        parseGraphQLNetworkEpochBlocks(blockNumber),
+      )
+    } catch (err) {
+      this.logger.error(`Failed to query network epoch from epoch block oracle`, {
+        err,
+      })
+      throw err
+    }
+  }
+
+  async networkLatestEpochBlocks(): Promise<NetworkEpochBlock[]> {
+    return await this.latestValidEpochBlocks(Object.values(NetworkAliases))
+  }
+
+  async deploymentNetwork(deployment: SubgraphDeploymentID) {
+    try {
+      const statuses = await this.indexingStatusResolver.indexingStatus([deployment])
+      return NetworkAliases[statuses[0].chains[0].network]
+    } catch {
+      throw new Error(`No status returned for subgraph deployment ${deployment}`)
+    }
+  }
+
   async resolvePOI(
     allocation: Allocation,
     poi: string | undefined,
     force: boolean,
   ): Promise<string> {
+    const epochStartBlockNumber = (
+      await this.contracts.epochManager.currentEpochBlock()
+    ).toNumber()
+    //TODO: when graph-node no longer require blockHash, update epochStartBlockNumber <- networkStartBlockNumber from EBO
+    const epochStartBlock = await this.ethereum.getBlock(epochStartBlockNumber)
+
+    const networkID = await this.deploymentNetwork(allocation.subgraphDeployment.id)
+    const networkStartBlock: NetworkEpochBlock = (
+      await this.latestValidEpochBlocks([networkID])
+    )[0]
+
+    this.logger.warn(`network id in resolve POI, still need blockHash`, {
+      alias: networkID,
+      networkStartBlockNumber: networkStartBlock.blockNumber,
+      epochStartBlockNumber,
+    })
     // poi = undefined, force=true  -- submit even if poi is 0x0
     // poi = defined,   force=true  -- no generatedPOI needed, just submit the POI supplied (with some sanitation?)
     // poi = undefined, force=false -- submit with generated POI if one available
@@ -568,9 +688,7 @@ export class NetworkMonitor {
             return (
               (await this.indexingStatusResolver.proofOfIndexing(
                 allocation.subgraphDeployment.id,
-                await this.ethereum.getBlock(
-                  (await this.contracts.epochManager.currentEpochBlock()).toNumber(),
-                ),
+                epochStartBlock,
                 allocation.indexer,
               )) || utils.hexlify(Array(32).fill(0))
             )
@@ -578,11 +696,6 @@ export class NetworkMonitor {
         break
       case false: {
         // Obtain the start block of the current epoch
-        const epochStartBlockNumber =
-          await this.contracts.epochManager.currentEpochBlock()
-        const epochStartBlock = await this.ethereum.getBlock(
-          epochStartBlockNumber.toNumber(),
-        )
         const generatedPOI = await this.indexingStatusResolver.proofOfIndexing(
           allocation.subgraphDeployment.id,
           epochStartBlock,
@@ -615,7 +728,7 @@ export class NetworkMonitor {
             }
             throw indexerError(
               IndexerErrorCode.IE068,
-              `User provided POI does not match reference fetched from the graph-node. Use '--force' to bypass this POI accuracy check. 
+              `User provided POI does not match reference fetched from the graph-node. Use '--force' to bypass this POI accuracy check.
               POI: ${poi}, 
               referencePOI: ${generatedPOI}`,
             )
