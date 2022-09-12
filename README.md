@@ -190,6 +190,9 @@ Indexer Infrastructure
   --auto-allocation-min-batch-size                 Minimum number of allocation 
                                         transactions inside a batch for AUTO 
                                         management mode    [number] [default: 1]
+  --auto-graft-resolver-depth           Maximum depth of grafting dependency to 
+                                        automatically 
+                                        resolve            [number] [default: 0]
 
 Network Subgraph
   --network-subgraph-deployment   Network subgraph deployment           [string]

@@ -86,6 +86,7 @@ export class Indexer {
   defaultAllocationAmount: BigNumber
   indexerAddress: string
   allocationManagementMode: AllocationManagementMode
+  autoGraftResolverDepth: number
 
   constructor(
     logger: Logger,
@@ -96,12 +97,14 @@ export class Indexer {
     defaultAllocationAmount: BigNumber,
     indexerAddress: string,
     allocationManagementMode: AllocationManagementMode,
+    autoGraftResolverDepth: number,
   ) {
     this.indexerManagement = indexerManagement
     this.statusResolver = statusResolver
     this.logger = logger
     this.indexerAddress = indexerAddress
     this.allocationManagementMode = allocationManagementMode
+    this.autoGraftResolverDepth = autoGraftResolverDepth
 
     if (adminEndpoint.startsWith('https')) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -827,23 +830,59 @@ export class Indexer {
     }
   }
 
+  graftBase = (err: Error, depth: number): SubgraphDeploymentID | undefined => {
+    if (
+      err.message.includes(
+        'subgraph validation error: [the graft base is invalid: deployment not found: ',
+      )
+    ) {
+      const graftBaseQm = err.message.substring(
+        err.message.indexOf('Qm'),
+        err.message.indexOf('Qm') + 46,
+      )
+      if (depth >= this.autoGraftResolverDepth) {
+        this.logger.warn(
+          `Grafting base depth reached auto-graft-resolver-depth limit, stop auto-grafting`,
+          {
+            base: graftBaseQm,
+            depth,
+          },
+        )
+        return
+      }
+      return new SubgraphDeploymentID(graftBaseQm)
+    }
+  }
+
   async deploy(
     name: string,
     deployment: SubgraphDeploymentID,
     node_id: string,
+    depth: number,
   ): Promise<void> {
     try {
       this.logger.info(`Deploy subgraph deployment`, {
         name,
         deployment: deployment.display,
       })
-      const response = await this.rpc.request('subgraph_deploy', {
+      let response = await this.rpc.request('subgraph_deploy', {
         name,
         ipfs_hash: deployment.ipfsHash,
         node_id: node_id,
       })
       if (response.error) {
-        throw response.error
+        const baseDeployment = this.graftBase(response.error, depth)
+        if (baseDeployment) {
+          await this.ensure(name, baseDeployment, depth + 1)
+          // Try deploy target deployment again, ideally do this after checking graft base sync status for graft block
+          response = await this.rpc.request('subgraph_deploy', {
+            name,
+            ipfs_hash: deployment.ipfsHash,
+            node_id: node_id,
+          })
+        } else {
+          throw indexerError(IndexerErrorCode.IE026, response.error)
+        }
       }
       this.logger.info(`Successfully deployed subgraph deployment`, {
         name,
@@ -917,7 +956,12 @@ export class Indexer {
     }
   }
 
-  async ensure(name: string, deployment: SubgraphDeploymentID): Promise<void> {
+  async ensure(
+    name: string,
+    deployment: SubgraphDeploymentID,
+    depth?: number,
+  ): Promise<void> {
+    depth = depth ?? 0
     try {
       // Randomly assign to unused nodes if they exist,
       // otherwise use the node with lowest deployments assigned
@@ -937,7 +981,7 @@ export class Indexer {
             return nodeA.deployments.length - nodeB.deployments.length
           })[0].id
       await this.create(name)
-      await this.deploy(name, deployment, targetNode)
+      await this.deploy(name, deployment, targetNode, depth)
       await this.reassign(deployment, targetNode)
     } catch (error) {
       const err = indexerError(IndexerErrorCode.IE020, error)

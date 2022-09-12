@@ -854,4 +854,12 @@ Failed to resolve POI: User provided POI does not match reference fetched from t
 
 Check sync and health status of the subgraph to access the issue. If needed, provide a POI or use `--force` to bypass POI checks. 
 
+## IE069
 
+**Summary**
+
+Failed to deploy subgraph deployment graft base.
+
+**Solution**
+
+Same error as IE026, but auto-deploying as the base for a grafted subgraph. Please make sure the auto graft depth resolver has correct limit, and that the graft base deployment has synced to the graft block before trying again - Set indexing rules for periodic reconciles.

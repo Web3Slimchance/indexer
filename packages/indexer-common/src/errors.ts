@@ -79,6 +79,7 @@ export enum IndexerErrorCode {
   IE066 = 'IE066',
   IE067 = 'IE067',
   IE068 = 'IE068',
+  IE069 = 'IE069',
 }
 
 export const INDEXER_ERROR_MESSAGES: Record<IndexerErrorCode, string> = {
@@ -150,7 +151,8 @@ export const INDEXER_ERROR_MESSAGES: Record<IndexerErrorCode, string> = {
   IE065: 'Failed to unallocate: Allocation has already been closed',
   IE066: 'Failed to allocate: allocation ID already exists on chain',
   IE067: 'Failed to query POI for current epoch start block',
-  IE068: 'User-provided POI did not match reference POI from graph-node',
+  IE068: 'User-provided POI did not match with reference POI from graph-node',
+  IE069: 'Failed to deploy the graft base for the target deployment',
 }
 
 export type IndexerErrorCause = unknown

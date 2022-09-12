@@ -2,6 +2,11 @@ import {
   indexerError,
   IndexerErrorCode,
   IndexerManagementModels,
+  IndexingDecisionBasis,
+  IndexingRuleAttributes,
+  SubgraphIdentifierType,
+  upsertIndexingRule,
+  fetchIndexingRules,
 } from '@graphprotocol/indexer-common'
 import { Logger, SubgraphDeploymentID } from '@graphprotocol/common-ts'
 import jayson, { Client as RpcClient } from 'jayson/promise'
@@ -10,8 +15,9 @@ import pTimeout from 'p-timeout'
 export class SubgraphManager {
   client: RpcClient
   indexNodeIDs: string[]
+  autoGraftResolverDepth: number
 
-  constructor(endpoint: string, indexNodeIDs: string[]) {
+  constructor(endpoint: string, indexNodeIDs: string[], autoGraftResolverDepth?: number) {
     if (endpoint.startsWith('https')) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.client = jayson.Client.https(endpoint as any)
@@ -20,6 +26,35 @@ export class SubgraphManager {
       this.client = jayson.Client.http(endpoint as any)
     }
     this.indexNodeIDs = indexNodeIDs
+    this.autoGraftResolverDepth = autoGraftResolverDepth ?? 0
+  }
+
+  graftBase = (
+    logger: Logger,
+    err: Error,
+    depth: number,
+  ): SubgraphDeploymentID | undefined => {
+    if (
+      err.message.includes(
+        'subgraph validation error: [the graft base is invalid: deployment not found',
+      )
+    ) {
+      const graftBaseQm = err.message.substring(
+        err.message.indexOf('Qm'),
+        err.message.indexOf('Qm') + 46,
+      )
+      if (depth >= this.autoGraftResolverDepth) {
+        logger.warn(
+          `Grafting depth for deployment reached auto-graft-resolver-depth limit`,
+          {
+            deployment: graftBaseQm,
+            depth,
+          },
+        )
+        return
+      }
+      return new SubgraphDeploymentID(graftBaseQm)
+    }
   }
 
   async createSubgraph(logger: Logger, name: string): Promise<void> {
@@ -44,24 +79,25 @@ export class SubgraphManager {
     name: string,
     deployment: SubgraphDeploymentID,
     indexNode: string | undefined,
+    depth: number,
   ): Promise<void> {
-    try {
-      let targetNode: string
-      if (indexNode) {
-        targetNode = indexNode
-        if (!this.indexNodeIDs.includes(targetNode)) {
-          logger.warn(
-            `Specified deployment target node not present in indexNodeIDs supplied at startup, proceeding with deploy to target node anyway.`,
-            {
-              targetNode: indexNode,
-              indexNodeIDs: this.indexNodeIDs,
-            },
-          )
-        }
-      } else {
-        targetNode =
-          this.indexNodeIDs[Math.floor(Math.random() * this.indexNodeIDs.length)]
+    let targetNode: string
+    if (indexNode) {
+      targetNode = indexNode
+      if (!this.indexNodeIDs.includes(targetNode)) {
+        logger.warn(
+          `Specified deployment target node not present in indexNodeIDs supplied at startup, proceeding with deploy to target node anyway.`,
+          {
+            targetNode: indexNode,
+            indexNodeIDs: this.indexNodeIDs,
+          },
+        )
       }
+    } else {
+      targetNode = this.indexNodeIDs[Math.floor(Math.random() * this.indexNodeIDs.length)]
+    }
+
+    try {
       logger.info(`Deploy subgraph`, {
         name,
         deployment: deployment.display,
@@ -76,7 +112,22 @@ export class SubgraphManager {
       const response = await pTimeout(requestPromise, 120000)
 
       if (response.error) {
-        throw response.error
+        const baseDeployment = this.graftBase(logger, response.error, depth)
+        if (baseDeployment) {
+          logger.debug(
+            `Found graft base deployment, ensure deployment and a matching offchain indexing rules`,
+          )
+          // Only add offchain after ensure
+          await this.ensure(logger, models, name, baseDeployment, targetNode, depth + 1)
+
+          // ensure targetDeployment again after graft base syncs, can use
+          //  "subgraph validation error: [the graft base is invalid: failed to graft onto `Qm...` since it has not processed any blocks (only processed block ___)]"
+          await this.ensure(logger, models, name, deployment, targetNode, depth)
+
+          throw indexerError(IndexerErrorCode.IE069, response.error)
+        } else {
+          throw indexerError(IndexerErrorCode.IE026, response.error)
+        }
       }
       logger.info(`Successfully deployed subgraph`, {
         name,
@@ -84,8 +135,18 @@ export class SubgraphManager {
         endpoints: response.result,
       })
 
-      // TODO: Insert an offchain indexing rule if one matching this deployment doesn't yet exist
       // Will be useful for supporting deploySubgraph resolver
+      const indexingRules = (await fetchIndexingRules(models, false)).map(
+        (rule) => new SubgraphDeploymentID(rule.identifier),
+      )
+      if (!indexingRules.includes(deployment)) {
+        const offchainIndexingRule = {
+          identifier: deployment.ipfsHash,
+          identifierType: SubgraphIdentifierType.DEPLOYMENT,
+          decisionBasis: IndexingDecisionBasis.OFFCHAIN,
+        } as Partial<IndexingRuleAttributes>
+        await upsertIndexingRule(logger, models, offchainIndexingRule)
+      }
     } catch (error) {
       const err = indexerError(IndexerErrorCode.IE026, error)
       logger.error(`Failed to deploy subgraph deployment`, {
@@ -196,10 +257,12 @@ export class SubgraphManager {
     name: string,
     deployment: SubgraphDeploymentID,
     indexNode: string | undefined,
+    depth?: number,
   ): Promise<void> {
+    depth = depth ?? 0
     try {
       await this.createSubgraph(logger, name)
-      await this.deploy(logger, models, name, deployment, indexNode)
+      await this.deploy(logger, models, name, deployment, indexNode, depth)
       await this.reassign(logger, deployment, indexNode)
     } catch (error) {
       const err = indexerError(IndexerErrorCode.IE020, error)

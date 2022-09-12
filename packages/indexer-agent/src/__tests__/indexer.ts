@@ -139,6 +139,7 @@ const setup = async () => {
   })
 
   const indexNodeIDs = ['node_1']
+  const graftDepth = 1
   indexerManagementClient = await createIndexerManagementClient({
     models,
     address: toAddress(address),
@@ -168,6 +169,7 @@ const setup = async () => {
     parseGRT('1000'),
     address,
     AllocationManagementMode.AUTO,
+    graftDepth,
   )
 }
 

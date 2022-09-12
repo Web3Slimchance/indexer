@@ -328,6 +328,12 @@ export default {
             .map((id: string) => id.trim())
             .filter((id: string) => id.length > 0),
       })
+      .option('auto-graft-resolver-depth', {
+        description: `Maximum depth of grafting dependency to automatically resolve`,
+        type: 'number',
+        default: 0,
+        group: 'Indexer Infrastructure',
+      })
       .option('poi-disputable-epochs', {
         description:
           'The number of epochs in the past to look for potential POI disputes',
@@ -367,6 +373,12 @@ export default {
           argv['rebate-claim-max-batch-size'] <= 0
         ) {
           return 'Invalid --rebate-claim-max-batch-size provided. Must be > 0 and an integer.'
+        }
+        if (
+          !Number.isInteger(argv['auto-graft-resolver-depth']) ||
+          argv['auto-graft-resolver-depth'] < 0
+        ) {
+          return 'Invalid --auto-graft-resolver-depth provided. Must be >= 0 and an integer.'
         }
         return true
       })
@@ -791,6 +803,7 @@ export default {
       receiptCollector,
       allocationManagementMode,
       autoAllocationMinBatchSize: argv.autoAllocationMinBatchSize,
+      autoGraftResolverDepth: argv.autoGraftResolverDepth,
     })
 
     await createIndexerManagementServer({
@@ -809,6 +822,7 @@ export default {
       argv.defaultAllocationAmount,
       indexerAddress,
       allocationManagementMode,
+      argv.autoGraftResolverDepth,
     )
     const networkSubgraphDeployment = argv.networkSubgraphDeployment
       ? new SubgraphDeploymentID(argv.networkSubgraphDeployment)
